@@ -17,9 +17,10 @@ def transcribir():
         return {'error': 'URL parameter missing'}, 400
 
     # Download the video using yt-dlp
+    temp_file_path = os.path.join('/tmp', 'audio.mp3')
     ydl_opts = {
         'format': 'bestaudio/best',
-        'outtmpl': 'audio.%(ext)s',
+        'outtmpl': temp_file_path,
         'postprocessors': [{
             'key': 'FFmpegExtractAudio',
             'preferredcodec': 'mp3',
@@ -29,7 +30,7 @@ def transcribir():
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info_dict = ydl.extract_info(url, download=False)
-            video_title = info_dict.get('title', 'audio')
+            video_title = info_dict.get('title', None)
 
             t1 = Thread(target=ydl.download, args=([url],))
             t1.start()
@@ -42,24 +43,24 @@ def transcribir():
     # Transcribe the audio using Whisper
     try:
         model = whisper.load_model("tiny")
-        result = model.transcribe("audio.mp3")
+        result = model.transcribe(temp_file_path)
         transcript = result["text"]
     except Exception as e:
         return {'error': str(e)}, 500
     finally:
-        os.remove("audio.mp3")
+        os.remove(temp_file_path)
 
     # Generate a summary using OpenAI
     try:
         summary = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-        {"role": "system", "content": "You are a helpful program that summary any transcription."},
-        {"role": "user", "content": transcription_example},
-        {"role": "assistant", "content": summary_example},
-        {"role": "user", "content": transcript}
-        ]
-    )
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a helpful program that summarizes any transcription."},
+                {"role": "user", "content": transcription_example},
+                {"role": "assistant", "content": summary_example},
+                {"role": "user", "content": transcript}
+            ]
+        )
     except Exception as e:
         return {'error': str(e)}, 500
     
@@ -70,7 +71,3 @@ def transcribir():
         'summary': summary.choices[0].message
     }
     return jsonify(response)
-
-
-if __name__ == '__main__':
-    app.run()
